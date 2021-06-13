@@ -1,0 +1,189 @@
+---
+title: "Project2-Prediction"
+author: "Siyuan Gu"
+date: "2021/2/11"
+output: html_document
+---
+
+
+In this assignment you will modelling student data using three flavors of tree algorithm: CART, C4.5 and C5.0. We will be using these algorithms to attempt to predict which students drop out of courses. Many universities have a problem with students over-enrolling in courses at the beginning of semester and then dropping most of them as the make decisions about which classes to attend. This makes it difficult to plan for the semester and allocate resources. However, schools don't want to restrict the choice of their students. One solution is to create predictions of which students are likley to drop out of which courses and use these predictions to inform semester planning. 
+
+In this assignment we will be using the tree algorithms to build models of which students are likely to drop out of which classes. 
+
+## Software
+
+In order to generate our models we will need several packages. The first package you should install is [caret](https://cran.r-project.org/web/packages/caret/index.html).
+
+There are many prediction packages available and they all have slightly different syntax. caret is a package that brings all the different algorithms under one hood using the same syntax. 
+
+We will also be accessing an algorithm from the [Weka suite](https://www.cs.waikato.ac.nz/~ml/weka/). Weka is a collection of machine learning algorithms that have been implemented in Java and made freely available by the University of Waikato in New Zealand. To access these algorithms you will need to first install both the [Java Runtime Environment (JRE) and Java Development Kit](http://www.oracle.com/technetwork/java/javase/downloads/jre9-downloads-3848532.html) on your machine. You can then then install the [RWeka](https://cran.r-project.org/web/packages/RWeka/index.html) package within R.
+
+**Weka requires Java and Java causes problems. If you cannot install Java and make Weka work, please follow the alternative instructions at line 121**
+(Issue 1: failure to install RWeka/RWekajars, paste "sudo R CMD javareconf" into terminal and try to install again)
+
+The last package you will need is [C50](https://cran.r-project.org/web/packages/C50/index.html).
+
+## Data
+
+The data comes from a university registrar's office. The code book for the variables are available in the file code-book.txt. Examine the variables and their definitions.
+
+Upload the drop-out.csv data into R as a data frame. 
+
+```{r}
+drop_out <- read.csv("drop-out.csv", header=TRUE, stringsAsFactors = T)
+
+```
+
+The next step is to separate your data set into a training set and a test set. Randomly select 25% of the students to be the test data set and leave the remaining 75% for your training data set. (Hint: each row represents an answer, not a single student.)
+
+```{r}
+trainData <- createDataPartition(
+  y = drop_out$complete,
+  p = .75, 
+  list = FALSE)
+
+training <- drop_out[ trainData,]
+testing <-drop_out[-trainData,]
+
+```
+
+For this assignment you will be predicting the student level variable "complete". 
+(Hint: make sure you understand the increments of each of your chosen variables, this will impact your tree construction)
+
+Visualize the relationships between your chosen variables as a scatterplot matrix.  Save your image as a .pdf named scatterplot_matrix.pdf. Based on this visualization do you see any patterns of interest? Why or why not?
+
+```{r}
+scatterplotMatrix(~drop_out$years++drop_out$enroll_date_time, 
+    diagonal=list(method="adaptiveDensity"), 
+    smooth = F,
+    regLine = T,
+    id = F, 
+    legend = T,
+    var.labels = c("Years", "Enroll date"),
+    main="Students complete courses via Years and Enroll date",
+    groups = drop_out$complete, by.groups = F)
+###Based on the graph, it seems like the older the students are, the more they will drop the course. Since the courses are harder with grade growing, students have difficulties to assign their limited time to lots of courses' works. On the other hand, the date of enrollment does not affect the complete level. As no matter when the students add the course, the university give them enough time to take a look at how the classes work at the beginning of the semester.###  
+```
+
+## CART Trees
+
+You will use the [rpart package](https://cran.r-project.org/web/packages/rpart/rpart.pdf) to generate CART tree models.
+
+Construct a classification tree that predicts complete using the caret package.
+
+```{r}
+library(caret)
+
+TRAIN2 <- training[,c(2:10)] #Remove the student_id variable that we do not want to use in the model
+
+#caret does not summarize the metrics we want by default so we have to modify the output
+MySummary  <- function(data, lev = NULL, model = NULL){
+  df <- defaultSummary(data, lev, model)
+  tc <- twoClassSummary(data, lev, model)
+  pr <- prSummary(data, lev, model)
+  out <- c(df,tc,pr)
+  out}
+
+#Define the control elements we would like to use
+ctrl <- trainControl(method = "repeatedcv", #Tell caret to perform k-fold cross validation
+                repeats = 3, #Tell caret to repeat each fold three times
+                classProbs = TRUE, #Calculate class probabilities
+                summaryFunction = MySummary)
+
+#Define the model
+cartFit <- train(complete~ ., #Define which variable to predict 
+                data = TRAIN2, #Define the data set to train the model on
+                trControl = ctrl, #Tell caret the control elements
+                method = "rpart", #Define the model type
+                metric = "Accuracy", #Final model choice is made according to sensitivity
+                preProc = c("center", "scale")) #Center and scale the data to minimize the 
+
+cartFit
+
+```
+
+Describe important model attribues of your tree. Do you believe it is a successful model of student performance, why/why not?
+
+###The important model attribues are the years. I do believe this is a successful model cause  the Accuracy is high and the cp value is low enough.###
+
+Can you use the sensitivity and specificity metrics to calculate the F1 metric?
+
+###Yes, by the formula of the slide shows, I can finally calculate the F1 metric.###
+
+Now predict results from the test data and describe important attributes of this test. Do you believe it is a successful model of student performance, why/why not?
+
+```{r}
+TEST2 <- testing[,c(2:10)] #Remove the student_id variable that we do not want to use in the model
+
+#Generate prediction using previously trained model
+cartClasses <- predict(cartFit, newdata = TEST2)
+
+#Generate model statistics
+confusionMatrix(data = cartClasses, as.factor(TEST2$complete))
+
+#After viewing "cartClasses", as it comes from TEST2, the important attributes are still years. As the p-value is small enough I do believe it is reliable.
+
+```
+
+## Conditional Inference Trees
+
+Train a Conditional Inference Tree using the `party` package on the same training data and examine your results.
+```{r}
+library("party")
+condFit <- rpart(formula=complete ~ years  + entrance_test_score + courses_taken +
+                   enroll_date_time + course_id + international + online + gender,
+                   data=TRAIN2)
+printcp(condFit)
+library(rpart.plot)
+rpart.plot(condFit)
+```
+
+Describe important model attribues of your tree. Do you believe it is a successful model of student performance, why/why not?
+#Obviously, years is the absolutely decisive attribution of the complete level.Then the following factors are course_id and courses_taken. It is not a quite successful model as the node error is a little bit big.#
+
+What does the plot represent? What information does this plot tell us?
+#After deleting years from factors, the tree makes significantly change. So the classification tree considers that the years is the dominant factor predicting complete level. The plot tells us that 84% of the freshmen tend to complete the courses they pick. Moveover, since the higher the course_id is, the more difficult the course is, it slightly affects the complete level. For the courses_taken number, as the years directly influence this parameter, we cannot draw any reliable conclusion.#
+
+Now test your new Conditional Inference model by predicting the test data and generating model fit statistics.
+#condClasses <- predict(condFit, newdata = TEST2)
+#condClasses
+#summary(condClasses)
+#table(condClasses,TEST2$complete)
+#mean(condClasses!=TEST2$complete)
+#[1] 0.0894198
+
+
+
+There is an updated version of the C4.5 model called C5.0, it is implemented in the C50 package. What improvements have been made to the newer version? 
+#The improvements of C5.0 from C4.5 are as follows): 
+#1.Faster speed: C5.0 is faster than C4.5 on the "sleep" "income" and "forest" data sets. 
+#2.More efficient memory usage: C5.0 is much more memory efficient.
+#3.Smaller trees: C5.0 obtains results very similar to C4.5, yet builds considerably smaller decision trees.
+#4.Similar accuracies: C5.0 obtains similar accuracies as C4.5.
+#5.Boosting support: Boosting can give decision trees better accuracy.
+#6.Weighting: With C5.0, you can weight different attributes and misclassification types. C5.0 can construct classifiers to minimize expected misclassification costs rather than error rates.
+#7.Winnowing: To help reduce noise, C5.0 automatically winnows the data. Winnowing refers to inspecting the attributes prior to classification, disregarding attributes that it finds are only marginally relevant.
+
+Install the C50 package, train and then test the C5.0 model on the same data.
+
+```{r}
+library(C50)
+c50Fit <-C5.0(TRAIN2[1:4396,-4],TRAIN2[1:4396,4])
+summary(c50Fit)
+plot(c50Fit)
+```
+
+## Compare the models
+
+caret allows us to compare all three models at once.
+
+```{r}
+resamps <- resamples(x=list(cart = cartFit, condinf = condFit, cfiveo = c50Fit))
+summary(resamps)
+```
+
+What does the model summary tell us? Which model do you believe is the best?
+#Since there are missing value of the caret model(not pivotal in results), the resampling process cannot be finished. I guess that the k-fold cross validation produces NULL values. While if everything works correctly, the resampling will tell us the accuracy of each model by predicting and testing. In my opinion, the k-fold cross validation is the best model. 
+
+Which variables (features) within your chosen model are important, do these features provide insights that may be useful in solving the problem of students dropping out of courses?
+#The years is the most important variable in my model. So for the higher grade students, they need to secure more information about their core courses from possible information resources such as their older friends, the registration center of their colleges... After gaining many advices from others, they have better sight on what courses they should take and how the course will be going in the future.
