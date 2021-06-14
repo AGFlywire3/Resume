@@ -53,6 +53,7 @@ For this assignment you will be predicting the student level variable "complete"
 Visualize the relationships between your chosen variables as a scatterplot matrix.  Save your image as a .pdf named scatterplot_matrix.pdf. Based on this visualization do you see any patterns of interest? Why or why not?
 
 ```{r}
+library(car)
 scatterplotMatrix(~drop_out$years++drop_out$enroll_date_time, 
     diagonal=list(method="adaptiveDensity"), 
     smooth = F,
@@ -98,8 +99,23 @@ cartFit <- train(complete~ ., #Define which variable to predict
                 metric = "Accuracy", #Final model choice is made according to sensitivity
                 preProc = c("center", "scale")) #Center and scale the data to minimize the 
 
-cartFit
+c50Fit2 <- train(complete~ ., #Define which variable to predict 
+                data = TRAIN2, #Define the data set to train the model on
+                trControl = ctrl, #Tell caret the control elements
+                method = "C5.0", #Define the model type
+                metric = "Accuracy", #Final model choice is made according to sensitivity
+                preProc = c("center", "scale")) #Center and scale the data to minimize the 
 
+condFit2 <- train(complete~ ., #Define which variable to predict 
+                data = TRAIN2, #Define the data set to train the model on
+                trControl = ctrl, #Tell caret the control elements
+                method = "ctree", #Define the model type
+                metric = "Accuracy", #Final model choice is made according to sensitivity
+                preProc = c("center", "scale")) #Center and scale the data to minimize the 
+
+cartFit
+cartFit2
+cartFit3
 ```
 
 Describe important model attribues of your tree. Do you believe it is a successful model of student performance, why/why not?
@@ -178,12 +194,12 @@ plot(c50Fit)
 caret allows us to compare all three models at once.
 
 ```{r}
-resamps <- resamples(x=list(cart = cartFit, condinf = condFit, cfiveo = c50Fit))
+resamps <- resamples(x=list(cart = cartFit, condinf = condFit2, cfiveo = c50Fit2))
 summary(resamps)
 ```
 
 What does the model summary tell us? Which model do you believe is the best?
-#Since there are missing value of the caret model(not pivotal in results), the resampling process cannot be finished. I guess that the k-fold cross validation produces NULL values. While if everything works correctly, the resampling will tell us the accuracy of each model by predicting and testing. In my opinion, the k-fold cross validation is the best model. 
+#The resampling will tell us the make statistical statements about the models' performance differences. In my opinion, the C5.0 model is the best fited model based on the summary statements. 
 
 Which variables (features) within your chosen model are important, do these features provide insights that may be useful in solving the problem of students dropping out of courses?
 #The years is the most important variable in my model. So for the higher grade students, they need to secure more information about their core courses from possible information resources such as their older friends, the registration center of their colleges... After gaining many advices from others, they have better sight on what courses they should take and how the course will be going in the future.
